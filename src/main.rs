@@ -4,6 +4,43 @@ use std::error::Error;
 use std::io::{self, BufRead};
 use std::process::{Command, Stdio};
 
+// Custom deserialization for ID that can be either string or integer
+fn deserialize_flexible_id<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    // First, deserialize to a dynamic JSON value
+    let value = serde_json::Value::deserialize(deserializer)?;
+    
+    match value {
+        // For string IDs (like "a1b2c3" or "12345")
+        serde_json::Value::String(s) => {
+            Ok(Some(s))
+        },
+        
+        // For numeric IDs (like 12345)
+        serde_json::Value::Number(num) => {
+            if let Some(n) = num.as_i64() {
+                Ok(Some(n.to_string()))
+            } else if let Some(n) = num.as_u64() {
+                Ok(Some(n.to_string()))
+            } else if let Some(n) = num.as_f64() {
+                // Convert to integer if it's a whole number
+                if n.fract() == 0.0 {
+                    Ok(Some(n as i64).map(|i| i.to_string()))
+                } else {
+                    Ok(Some(n.to_string()))
+                }
+            } else {
+                Ok(None)
+            }
+        },
+        
+        // For any other type, return None
+        _ => Ok(None),
+    }
+}
+
 // Custom deserialization for "Yes"/"No" string to Option<bool>
 fn deserialize_yes_no<'de, D>(deserializer: D) -> Result<Option<bool>, D::Error>
 where
@@ -67,20 +104,25 @@ struct RTL433Message {
     time: DateTime<Utc>,
     #[serde(default)]
     model: String,
-    #[serde(default)]
-    id: Option<i64>,
+    #[serde(default, deserialize_with = "deserialize_flexible_id")]
+    id: Option<String>,
     #[serde(default)]
     channel: Option<i64>,
     #[serde(default, rename = "temperature_C")]
     temperature_c: Option<f64>,
     #[serde(default)]
-    humidity: Option<i64>,
+    humidity: Option<f64>,
     #[serde(default)]
     battery_ok: Option<f64>,
     #[serde(default, deserialize_with = "deserialize_yes_no")]
     test: Option<bool>,
     #[serde(default)]
     mic: String, // Integrity
+
+    #[serde(default, rename = "pressure_kPa")]
+    pressure_kpa: Option<f64>,
+    #[serde(default, rename = "pressure_PSI")]
+    pressure_psi: Option<f64>,
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -147,6 +189,14 @@ fn process_json_line(json_line: &str) -> Result<(), Box<dyn Error>> {
             // Print humidity if available
             if let Some(humidity) = message.humidity {
                 println!("  Humidity: {}%", humidity);
+            }
+
+            // Print pressure if available
+            if let Some(pressure) = message.pressure_kpa {
+                println!("  Pressure: {} kPa", pressure);
+            }
+            if let Some(pressure) = message.pressure_psi {
+                println!("  Pressure: {} PSI", pressure);
             }
             
             // Print battery status if available
