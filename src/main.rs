@@ -21,40 +21,40 @@ where
 }
 
 // Custom deserializer for timestamp strings
-fn deserialize_timestamp<'de, D>(deserializer: D) -> Result<Option<DateTime<Utc>>, D::Error>
+fn deserialize_timestamp<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let s: Option<String> = Option::deserialize(deserializer)?;
     
     match s {
-        None => Ok(None),
+        None => Ok(Utc::now()),
         Some(time_str) => {
             // Handle multiple possible date formats from rtl_433
             
             // Format: "2023-04-15 14:32:56" (most common)
             if let Ok(naive_time) = NaiveDateTime::parse_from_str(&time_str, "%Y-%m-%d %H:%M:%S") {
-                return Ok(Some(Utc.from_utc_datetime(&naive_time)));
+                return Ok(Utc.from_utc_datetime(&naive_time));
             }
             
             // Format with fractional seconds: "2023-04-15 14:32:56.123"
             if let Ok(naive_time) = NaiveDateTime::parse_from_str(&time_str, "%Y-%m-%d %H:%M:%S%.f") {
-                return Ok(Some(Utc.from_utc_datetime(&naive_time)));
+                return Ok(Utc.from_utc_datetime(&naive_time));
             }
             
             // ISO 8601 format: "2023-04-15T14:32:56Z"
             if let Ok(datetime) = DateTime::parse_from_rfc3339(&time_str) {
-                return Ok(Some(datetime.with_timezone(&Utc)));
+                return Ok(datetime.with_timezone(&Utc));
             }
             
             // Unix timestamp (seconds since epoch)
             if let Ok(timestamp) = time_str.parse::<i64>() {
-                return Ok(Some(Utc.timestamp_opt(timestamp, 0).single().unwrap_or_else(|| Utc::now())));
+                return Ok(Utc.timestamp_opt(timestamp, 0).single().unwrap_or_else(|| Utc::now()));
             }
             
             // If none of the formats match, return the current time as fallback
-            eprintln!("Failed to parse timestamp: {}", time_str);
-            Ok(None)
+            eprintln!("Unknown timestamp format: {}", time_str);
+            Ok(Utc::now())
         }
     }
 }
@@ -64,7 +64,7 @@ where
 struct RTL433Message {
     // Common fields often found in rtl_433 JSON output
     #[serde(default, deserialize_with = "deserialize_timestamp")]
-    time: Option<DateTime<Utc>>,
+    time: DateTime<Utc>,
     #[serde(default)]
     model: String,
     #[serde(default)]
@@ -137,7 +137,7 @@ fn process_json_line(json_line: &str) -> Result<(), Box<dyn Error>> {
     // Parse JSON
     match serde_json::from_str::<RTL433Message>(json_line) {
         Ok(message) => {
-            println!("Received message from model: {} at {}", message.model, message.time.unwrap_or_default());
+            println!("Received message from model: {} at {}", message.model, message.time);
             
             // Print temperature if available
             if let Some(temp) = message.temperature_c {
