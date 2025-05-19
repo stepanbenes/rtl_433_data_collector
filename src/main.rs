@@ -179,7 +179,7 @@ fn process_json_line(json_line: &str) -> Result<(), Box<dyn Error>> {
     // Parse JSON
     match serde_json::from_str::<RTL433Message>(json_line) {
         Ok(message) => {
-            println!("Received message from model: {} at {}", message.model, message.time);
+            println!("Received message from model: {} with id: {} at {}", message.model, message.id.unwrap_or_default(), message.time);
             
             // Print temperature if available
             if let Some(temp) = message.temperature_c {
